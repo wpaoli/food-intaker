@@ -15,10 +15,10 @@ class Food(Base):
     __tablename__ = "foods"
 
     id = Column(Integer, primary_key=True)
-    usda_fdc_id = Column(Integer, nullable=False, unique=True)
+    usda_fdc_id = Column(Integer, nullable=True, unique=True)
     name = Column(String, nullable=False)
-    calories_per_100g = Column(Float, nullable=False)
-    protein_per_100g = Column(Float, nullable=False)
+    calories_per_serving = Column(Float, nullable=True)
+    protein_per_serving = Column(Float, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -28,6 +28,6 @@ class LogEntry(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     food_id = Column(Integer, ForeignKey("foods.id"), nullable=False)
-    grams = Column(Float, nullable=False)
+    serving = Column(Float, nullable=False)
     logged_at = Column(DateTime, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
