@@ -1,12 +1,9 @@
-from dotenv import load_dotenv
-load_dotenv()
-
 from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from database import init_db, SessionLocal, get_db
 from models import User, Food, LogEntry
@@ -30,23 +27,69 @@ def status():
     return {"status": "ok"}
 
 
+class FoodResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    calories_per_serving: Optional[float]
+    protein_per_serving: Optional[float]
+    carbs_per_serving: Optional[float]
+    fat_per_serving: Optional[float]
+    created_at: datetime
+
+
 class SaveFoodRequest(BaseModel):
     food_name: str
     calories: Optional[float] = None
     protein: Optional[float] = None
+    carbs: Optional[float] = None
+    fat: Optional[float] = None
 
 
-@app.get("/foods", tags=["foods"])
+@app.get("/foods", tags=["foods"], response_model=list[FoodResponse])
 def list_foods(db: Session = Depends(get_db)):
     return db.query(Food).all()
 
 
-@app.post("/foods", tags=["foods"])
+class UpdateFoodRequest(BaseModel):
+    food_name: Optional[str] = None
+    calories: Optional[float] = None
+    protein: Optional[float] = None
+    carbs: Optional[float] = None
+    fat: Optional[float] = None
+
+
+@app.patch("/foods/{food_id}", tags=["foods"], response_model=FoodResponse)
+def update_food(food_id: int, body: UpdateFoodRequest, db: Session = Depends(get_db)):
+    food = db.query(Food).filter(Food.id == food_id).first()
+    if not food:
+        raise HTTPException(status_code=404, detail="Food not found")
+
+    if body.food_name is not None:
+        food.name = body.food_name
+    if body.calories is not None:
+        food.calories_per_serving = body.calories
+    if body.protein is not None:
+        food.protein_per_serving = body.protein
+    if body.carbs is not None:
+        food.carbs_per_serving = body.carbs
+    if body.fat is not None:
+        food.fat_per_serving = body.fat
+
+    db.commit()
+    db.refresh(food)
+    return food
+
+
+@app.post("/foods", tags=["foods"], response_model=FoodResponse)
 def save_food(body: SaveFoodRequest, db: Session = Depends(get_db)):
     food = Food(
         name=body.food_name,
         calories_per_serving=body.calories,
         protein_per_serving=body.protein,
+        carbs_per_serving=body.carbs,
+        fat_per_serving=body.fat,
     )
     db.add(food)
     db.commit()
@@ -57,7 +100,6 @@ def save_food(body: SaveFoodRequest, db: Session = Depends(get_db)):
 class CreateLogRequest(BaseModel):
     food_id: int
     serving: float
-    logged_at: Optional[datetime] = None
 
 
 @app.post("/log", tags=["log"])
@@ -70,7 +112,7 @@ def create_log(body: CreateLogRequest, db: Session = Depends(get_db)):
         user_id=1,
         food_id=body.food_id,
         serving=body.serving,
-        logged_at=body.logged_at or datetime.now(timezone.utc),
+        logged_at=datetime.now(timezone.utc),
     )
     db.add(entry)
     db.commit()
@@ -78,9 +120,44 @@ def create_log(body: CreateLogRequest, db: Session = Depends(get_db)):
     return entry
 
 
+class QuickLogRequest(BaseModel):
+    note: Optional[str] = None
+    calories: Optional[float] = None
+    protein: Optional[float] = None
+    carbs: Optional[float] = None
+    fat: Optional[float] = None
+
+
+@app.post("/log/quick", tags=["log"])
+def quick_log(body: QuickLogRequest, db: Session = Depends(get_db)):
+    entry = LogEntry(
+        user_id=1,
+        note=body.note,
+        calories=body.calories,
+        protein=body.protein,
+        carbs=body.carbs,
+        fat=body.fat,
+        logged_at=datetime.now(timezone.utc),
+    )
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    return entry
+
+
+def _entry_nutrition(entry, food):
+    if food:
+        factor = entry.serving or 0
+        return (
+            round(factor * (food.calories_per_serving or 0), 1),
+            round(factor * (food.protein_per_serving or 0), 1),
+        )
+    return (entry.calories or 0, entry.protein or 0)
+
+
 @app.get("/report", tags=["log"])
 def get_report(start: Optional[datetime] = None, end: Optional[datetime] = None, db: Session = Depends(get_db)):
-    query = db.query(LogEntry, Food).join(Food, LogEntry.food_id == Food.id)
+    query = db.query(LogEntry, Food).outerjoin(Food, LogEntry.food_id == Food.id)
     if start:
         query = query.filter(LogEntry.logged_at >= start)
     if end:
@@ -89,8 +166,9 @@ def get_report(start: Optional[datetime] = None, end: Optional[datetime] = None,
     total_calories = 0.0
     total_protein = 0.0
     for entry, food in query.all():
-        total_calories += entry.serving * (food.calories_per_serving or 0)
-        total_protein += entry.serving * (food.protein_per_serving or 0)
+        cal, pro = _entry_nutrition(entry, food)
+        total_calories += cal
+        total_protein += pro
 
     return {
         "total_calories": round(total_calories, 1),
@@ -102,7 +180,7 @@ def get_report(start: Optional[datetime] = None, end: Optional[datetime] = None,
 
 @app.get("/log", tags=["log"])
 def get_log(start: Optional[datetime] = None, end: Optional[datetime] = None, db: Session = Depends(get_db)):
-    query = db.query(LogEntry, Food).join(Food, LogEntry.food_id == Food.id)
+    query = db.query(LogEntry, Food).outerjoin(Food, LogEntry.food_id == Food.id)
     if start:
         query = query.filter(LogEntry.logged_at >= start)
     if end:
@@ -110,13 +188,14 @@ def get_log(start: Optional[datetime] = None, end: Optional[datetime] = None, db
 
     results = []
     for entry, food in query.all():
+        cal, pro = _entry_nutrition(entry, food)
         results.append({
             "id": entry.id,
-            "food_id": food.id,
-            "food_name": food.name,
+            "food_id": food.id if food else None,
+            "food_name": food.name if food else (entry.note or "Quick entry"),
             "serving": entry.serving,
-            "calories": round(entry.serving * (food.calories_per_serving or 0), 1),
-            "protein": round(entry.serving * (food.protein_per_serving or 0), 1),
+            "calories": cal,
+            "protein": pro,
             "logged_at": entry.logged_at,
         })
     return results

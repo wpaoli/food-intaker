@@ -1,11 +1,10 @@
-# Calorie Tracker
+# Food Intaker
 
-Single-user calorie and protein tracker. Python/FastAPI backend with a USDA food database integration. MCP server layer lets Claude log and query food conversationally.
+Personal nutrition tracker. Log what you eat, track calories, protein, carbs, and fat. Foods are fully custom -- you define the nutrition values per serving.
 
 ## Prerequisites
 
 - Python 3.11+
-- A [USDA FoodData Central API key](https://fdc.nal.usda.gov/api-key-signup.html) (free)
 
 ## Setup
 
@@ -16,9 +15,6 @@ source .venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
-
-# Create .env file
-echo "USDA_API_KEY=your_key_here" > .env
 ```
 
 ## Running
@@ -27,7 +23,7 @@ echo "USDA_API_KEY=your_key_here" > .env
 uvicorn main:app --reload
 ```
 
-API docs available at [http://localhost:8000/docs](http://localhost:8000/docs).
+API docs: [http://localhost:8000/docs](http://localhost:8000/docs)
 
 OpenAPI collection (Bruno, Postman, Insomnia, etc.): [http://localhost:8000/openapi.json](http://localhost:8000/openapi.json)
 
@@ -36,10 +32,12 @@ OpenAPI collection (Bruno, Postman, Insomnia, etc.): [http://localhost:8000/open
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/status` | Server status check |
-| `GET` | `/foods/search?q=...` | Search USDA food database |
-| `POST` | `/foods` | Save a food to local DB (body: `{"fdc_id": ...}`) |
-| `POST` | `/log` | Log a food entry (body: `{"food_id", "grams", "logged_at"}`) |
-| `GET` | `/log?start=...&end=...` | List log entries in date range |
+| `GET` | `/foods` | List all saved foods |
+| `POST` | `/foods` | Add a food with custom nutrition per serving |
+| `PATCH` | `/foods/{id}` | Update a food |
+| `POST` | `/log` | Log a saved food entry (`food_id`, `serving`) |
+| `POST` | `/log/quick` | Log nutrition directly, no food required |
+| `GET` | `/log?start=...&end=...` | List log entries, optionally filtered by date |
 | `GET` | `/report?start=...&end=...` | Aggregate calorie + protein totals |
 
 ## Data
