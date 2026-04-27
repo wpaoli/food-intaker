@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import FastAPI, Depends, HTTPException
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, ConfigDict
 
@@ -199,3 +200,26 @@ def get_log(start: Optional[datetime] = None, end: Optional[datetime] = None, db
             "logged_at": entry.logged_at,
         })
     return results
+
+
+class UpdateSettingsRequest(BaseModel):
+    protein_target: Optional[float] = None
+
+
+@app.get("/settings", tags=["meta"])
+def get_settings(db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.id == 1).first()
+    return {"protein_target": user.protein_target}
+
+
+@app.patch("/settings", tags=["meta"])
+def update_settings(body: UpdateSettingsRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.id == 1).first()
+    if body.protein_target is not None:
+        user.protein_target = body.protein_target
+    db.commit()
+    db.refresh(user)
+    return {"protein_target": user.protein_target}
+
+
+app.mount("/", StaticFiles(directory="static", html=True), name="static")

@@ -1,0 +1,8 @@
+{
+  "name": "Food Intaker",
+  "short_name": "Food Intaker",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "start_url": "/"
+}

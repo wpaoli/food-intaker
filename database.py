@@ -2,10 +2,17 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-DB_DIR = "./data"
-DB_PATH = f"{DB_DIR}/tracker.db"
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-engine = create_engine(f"sqlite:///{DB_PATH}", connect_args={"check_same_thread": False})
+if DATABASE_URL:
+    # Render injects postgres:// but SQLAlchemy requires postgresql://
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    engine = create_engine(DATABASE_URL)
+else:
+    DB_DIR = "./data"
+    os.makedirs(DB_DIR, exist_ok=True)
+    engine = create_engine(f"sqlite:///{DB_DIR}/tracker.db", connect_args={"check_same_thread": False})
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -19,6 +26,5 @@ def get_db():
 
 
 def init_db():
-    os.makedirs(DB_DIR, exist_ok=True)
     import models  # noqa: ensure models are registered on Base
     Base.metadata.create_all(bind=engine)

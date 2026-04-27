@@ -8,6 +8,7 @@ class User(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
+    protein_target = Column(Float, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
