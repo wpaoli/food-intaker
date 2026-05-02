@@ -43,3 +43,30 @@ OpenAPI collection (Bruno, Postman, Insomnia, etc.): [http://localhost:8000/open
 ## Data
 
 SQLite database is created automatically at `./data/tracker.db` on first run.
+
+## Deployment
+
+Live: **https://food-intaker.onrender.com**
+
+| Service | Details |
+|---------|---------|
+| Render | Web service — config in `render.yaml` — [dashboard](https://dashboard.render.com) |
+| Supabase | PostgreSQL — [project dashboard](https://supabase.com/dashboard/project/cwxkbrthlimlekyfiqlp) |
+
+### Environment variables
+
+Set `DATABASE_URL` in `.env` locally or as a Render environment variable. Use the Supabase **Session Pooler** URL (not the direct connection) for IPv4 compatibility with Render:
+
+```
+DATABASE_URL=postgresql://postgres.<ref>:<password>@aws-1-us-west-2.pooler.supabase.com:5432/postgres
+```
+
+### DB migrations
+
+SQLAlchemy's `create_all` creates tables but won't ALTER existing ones. After adding new columns to models, run in the [Supabase SQL editor](https://supabase.com/dashboard/project/cwxkbrthlimlekyfiqlp/sql):
+
+```sql
+ALTER TABLE users ADD COLUMN IF NOT EXISTS calories_target FLOAT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS carbs_target FLOAT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS fat_target FLOAT;
+```
