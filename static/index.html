@@ -13,7 +13,7 @@
 
     :root {
       --bg: #000;
-      --fg: #e0e0e0;
+      --fg: #f5f5f5;
       --accent: #00ff00;
       --dim: #555;
       --font: "Courier New", Courier, monospace;
@@ -112,7 +112,7 @@
       margin-bottom: 8px;
       gap: 8px;
     }
-    .form-row label { width: 70px; color: var(--dim); flex-shrink: 0; }
+    .form-row label { width: 70px; color: #aaa; flex-shrink: 0; font-weight: bold; }
     .form-row input {
       flex: 1;
       background: none;
@@ -120,7 +120,7 @@
       border-bottom: 1px solid var(--dim);
       color: var(--fg);
       font-family: var(--font);
-      font-size: 14px;
+      font-size: 16px;
       padding: 4px 0;
       outline: none;
     }
@@ -145,22 +145,15 @@
       flex-shrink: 0;
     }
 
-    #protein-label {
-      display: flex;
-      justify-content: space-between;
-      margin-bottom: 6px;
-      font-size: 13px;
-    }
-    #protein-label .key { color: var(--dim); }
-    #protein-label .val { color: var(--accent); }
-
-    #progress-bar {
-      font-size: 13px;
-      letter-spacing: 1px;
-      color: var(--accent);
-      overflow: hidden;
-      white-space: nowrap;
-    }
+    .macro-row { margin-bottom: 8px; }
+    .macro-row:last-child { margin-bottom: 0; }
+    .macro-row.plain { display: flex; justify-content: space-between; font-size: 13px; }
+    .macro-row .key { color: var(--dim); }
+    .macro-row .val { color: var(--accent); }
+    .macro-label { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 13px; }
+    .macro-label .key { color: var(--dim); }
+    .macro-label .val { color: var(--accent); }
+    .bar { font-size: 13px; letter-spacing: 1px; color: var(--accent); overflow: hidden; white-space: nowrap; }
 
     /* Settings panel */
     #settings-panel {
@@ -300,11 +293,7 @@
 </div>
 
 <footer>
-  <div id="protein-label">
-    <span class="key">protein today</span>
-    <span class="val" id="protein-val">-- / --g</span>
-  </div>
-  <div id="progress-bar">░░░░░░░░░░░░░░░░░░░░</div>
+  <div id="macro-bars"></div>
 </footer>
 
 <div id="add-food-panel">
@@ -320,18 +309,24 @@
 
 <div id="settings-panel">
   <h2>// settings</h2>
-  <div class="form-row">
-    <label>target</label>
-    <input id="s-target" type="number" inputmode="decimal" placeholder="protein goal (g)">
-  </div>
+  <div class="form-row"><label>protein</label><input id="s-protein" type="number" inputmode="decimal" placeholder="goal (g)"></div>
+  <div class="form-row"><label>calories</label><input id="s-calories" type="number" inputmode="decimal" placeholder="goal"></div>
+  <div class="form-row"><label>carbs</label><input id="s-carbs" type="number" inputmode="decimal" placeholder="goal (g)"></div>
+  <div class="form-row"><label>fat</label><input id="s-fat" type="number" inputmode="decimal" placeholder="goal (g)"></div>
   <button id="settings-save" onclick="saveSettings()">[ save ]</button>
   <button id="settings-close" onclick="closeSettings()">[ cancel ]</button>
 </div>
 
 <script>
   const BAR_LEN = 20;
-  let proteinTarget = null;
-  let proteinToday = 0;
+  const MACROS = [
+    { key: 'protein',  label: 'protein',  unit: 'g', settingKey: 'protein_target',  reportKey: 'total_protein',  inputId: 's-protein',  foodKey: 'protein_per_serving' },
+    { key: 'calories', label: 'calories', unit: '',  settingKey: 'calories_target', reportKey: 'total_calories', inputId: 's-calories', foodKey: 'calories_per_serving' },
+    { key: 'carbs',    label: 'carbs',    unit: 'g', settingKey: 'carbs_target',    reportKey: 'total_carbs',    inputId: 's-carbs',    foodKey: 'carbs_per_serving' },
+    { key: 'fat',      label: 'fat',      unit: 'g', settingKey: 'fat_target',      reportKey: 'total_fat',      inputId: 's-fat',      foodKey: 'fat_per_serving' },
+  ];
+  let targets = { protein: null, calories: null, carbs: null, fat: null };
+  let totals   = { protein: 0, calories: 0, carbs: 0, fat: 0 };
 
   async function init() {
     const [foods, report, settings] = await Promise.all([
@@ -339,10 +334,11 @@
       fetch('/report?start=' + todayStart()).then(r => r.json()),
       fetch('/settings').then(r => r.json()),
     ]);
-
     renderFoods(foods);
-    proteinTarget = settings.protein_target;
-    proteinToday = report.total_protein;
+    MACROS.forEach(m => {
+      targets[m.key] = settings[m.settingKey];
+      totals[m.key]  = report[m.reportKey] || 0;
+    });
     renderProgress();
   }
 
@@ -373,26 +369,35 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ food_id: food.id, serving: 1 }),
     });
-    proteinToday += (food.protein_per_serving || 0);
+    MACROS.forEach(m => { totals[m.key] += (food[m.foodKey] || 0); });
     renderProgress();
     btn.classList.add('flash');
     setTimeout(() => btn.classList.remove('flash'), 400);
   }
 
   function renderProgress() {
-    const val = document.getElementById('protein-val');
-    const bar = document.getElementById('progress-bar');
-    const rounded = Math.round(proteinToday * 10) / 10;
+    const container = document.getElementById('macro-bars');
+    const anyTarget = MACROS.some(m => targets[m.key] != null);
 
-    if (proteinTarget) {
-      const pct = Math.min(proteinToday / proteinTarget, 1);
-      const filled = Math.round(pct * BAR_LEN);
-      val.textContent = `${rounded} / ${proteinTarget}g`;
-      bar.textContent = '█'.repeat(filled) + '░'.repeat(BAR_LEN - filled);
-    } else {
-      val.textContent = `${rounded}g`;
-      bar.textContent = '░'.repeat(BAR_LEN);
+    if (!anyTarget) {
+      container.innerHTML = MACROS.map(m => {
+        const val = Math.round(totals[m.key] * 10) / 10;
+        return `<div class="macro-row plain"><span class="key">${m.label} today</span><span class="val">${val}${m.unit}</span></div>`;
+      }).join('');
+      return;
     }
+
+    container.innerHTML = MACROS
+      .filter(m => targets[m.key] != null)
+      .map(m => {
+        const val = Math.round(totals[m.key] * 10) / 10;
+        const pct = Math.min(totals[m.key] / targets[m.key], 1);
+        const filled = Math.round(pct * BAR_LEN);
+        return `<div class="macro-row">
+          <div class="macro-label"><span class="key">${m.label}</span><span class="val">${val} / ${targets[m.key]}${m.unit}</span></div>
+          <div class="bar">${'█'.repeat(filled)}${'░'.repeat(BAR_LEN - filled)}</div>
+        </div>`;
+      }).join('');
   }
 
   function toggleQuick() {
@@ -401,18 +406,18 @@
 
   async function submitQuick() {
     const body = {
-      note: document.getElementById('q-note').value || null,
+      note:     document.getElementById('q-note').value || null,
       calories: parseFloat(document.getElementById('q-cal').value) || null,
-      protein: parseFloat(document.getElementById('q-pro').value) || null,
-      carbs: parseFloat(document.getElementById('q-carb').value) || null,
-      fat: parseFloat(document.getElementById('q-fat').value) || null,
+      protein:  parseFloat(document.getElementById('q-pro').value) || null,
+      carbs:    parseFloat(document.getElementById('q-carb').value) || null,
+      fat:      parseFloat(document.getElementById('q-fat').value) || null,
     };
     await fetch('/log/quick', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
-    proteinToday += (body.protein || 0);
+    MACROS.forEach(m => { totals[m.key] += (body[m.key] || 0); });
     renderProgress();
     document.getElementById('quick-form').classList.remove('open');
     ['q-note','q-cal','q-pro','q-carb','q-fat'].forEach(id => document.getElementById(id).value = '');
@@ -432,10 +437,10 @@
     if (!name) return;
     const body = {
       food_name: name,
-      calories: parseFloat(document.getElementById('f-cal').value) || null,
-      protein: parseFloat(document.getElementById('f-pro').value) || null,
-      carbs: parseFloat(document.getElementById('f-carb').value) || null,
-      fat: parseFloat(document.getElementById('f-fat').value) || null,
+      calories:  parseFloat(document.getElementById('f-cal').value) || null,
+      protein:   parseFloat(document.getElementById('f-pro').value) || null,
+      carbs:     parseFloat(document.getElementById('f-carb').value) || null,
+      fat:       parseFloat(document.getElementById('f-fat').value) || null,
     };
     const res = await fetch('/foods', {
       method: 'POST',
@@ -456,7 +461,7 @@
   }
 
   function openSettings() {
-    document.getElementById('s-target').value = proteinTarget || '';
+    MACROS.forEach(m => { document.getElementById(m.inputId).value = targets[m.key] || ''; });
     document.getElementById('settings-panel').classList.add('open');
   }
 
@@ -465,13 +470,14 @@
   }
 
   async function saveSettings() {
-    const val = parseFloat(document.getElementById('s-target').value) || null;
+    const body = {};
+    MACROS.forEach(m => { body[m.settingKey] = parseFloat(document.getElementById(m.inputId).value) || null; });
     await fetch('/settings', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ protein_target: val }),
+      body: JSON.stringify(body),
     });
-    proteinTarget = val;
+    MACROS.forEach(m => { targets[m.key] = body[m.settingKey]; });
     renderProgress();
     closeSettings();
   }

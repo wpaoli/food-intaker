@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -152,8 +155,10 @@ def _entry_nutrition(entry, food):
         return (
             round(factor * (food.calories_per_serving or 0), 1),
             round(factor * (food.protein_per_serving or 0), 1),
+            round(factor * (food.carbs_per_serving or 0), 1),
+            round(factor * (food.fat_per_serving or 0), 1),
         )
-    return (entry.calories or 0, entry.protein or 0)
+    return (entry.calories or 0, entry.protein or 0, entry.carbs or 0, entry.fat or 0)
 
 
 @app.get("/report", tags=["log"])
@@ -166,14 +171,20 @@ def get_report(start: Optional[datetime] = None, end: Optional[datetime] = None,
 
     total_calories = 0.0
     total_protein = 0.0
+    total_carbs = 0.0
+    total_fat = 0.0
     for entry, food in query.all():
-        cal, pro = _entry_nutrition(entry, food)
+        cal, pro, carb, fat = _entry_nutrition(entry, food)
         total_calories += cal
         total_protein += pro
+        total_carbs += carb
+        total_fat += fat
 
     return {
         "total_calories": round(total_calories, 1),
         "total_protein": round(total_protein, 1),
+        "total_carbs": round(total_carbs, 1),
+        "total_fat": round(total_fat, 1),
         "start": start,
         "end": end,
     }
@@ -189,7 +200,7 @@ def get_log(start: Optional[datetime] = None, end: Optional[datetime] = None, db
 
     results = []
     for entry, food in query.all():
-        cal, pro = _entry_nutrition(entry, food)
+        cal, pro, carb, fat = _entry_nutrition(entry, food)
         results.append({
             "id": entry.id,
             "food_id": food.id if food else None,
@@ -197,6 +208,8 @@ def get_log(start: Optional[datetime] = None, end: Optional[datetime] = None, db
             "serving": entry.serving,
             "calories": cal,
             "protein": pro,
+            "carbs": carb,
+            "fat": fat,
             "logged_at": entry.logged_at,
         })
     return results
@@ -204,22 +217,37 @@ def get_log(start: Optional[datetime] = None, end: Optional[datetime] = None, db
 
 class UpdateSettingsRequest(BaseModel):
     protein_target: Optional[float] = None
+    calories_target: Optional[float] = None
+    carbs_target: Optional[float] = None
+    fat_target: Optional[float] = None
 
 
 @app.get("/settings", tags=["meta"])
 def get_settings(db: Session = Depends(get_db)):
     user = db.query(User).filter(User.id == 1).first()
-    return {"protein_target": user.protein_target}
+    return {
+        "protein_target": user.protein_target,
+        "calories_target": user.calories_target,
+        "carbs_target": user.carbs_target,
+        "fat_target": user.fat_target,
+    }
 
 
 @app.patch("/settings", tags=["meta"])
 def update_settings(body: UpdateSettingsRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.id == 1).first()
-    if body.protein_target is not None:
-        user.protein_target = body.protein_target
+    user.protein_target = body.protein_target  # type: ignore[assignment]
+    user.calories_target = body.calories_target  # type: ignore[assignment]
+    user.carbs_target = body.carbs_target  # type: ignore[assignment]
+    user.fat_target = body.fat_target  # type: ignore[assignment]
     db.commit()
     db.refresh(user)
-    return {"protein_target": user.protein_target}
+    return {
+        "protein_target": user.protein_target,
+        "calories_target": user.calories_target,
+        "carbs_target": user.carbs_target,
+        "fat_target": user.fat_target,
+    }
 
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
