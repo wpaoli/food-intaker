@@ -267,13 +267,50 @@
       -webkit-tap-highlight-color: transparent;
     }
     #add-food-btn:active { border-color: var(--fg); color: var(--fg); }
+
+    /* Login panel */
+    #login-panel {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      z-index: 20;
+      flex-direction: column;
+      justify-content: center;
+      padding: 32px 16px;
+      padding-top: calc(32px + env(safe-area-inset-top));
+    }
+    #login-panel.open { display: flex; }
+    #login-panel h2 {
+      font-size: 13px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--dim);
+      margin-bottom: 32px;
+    }
+    #login-error { color: #ff4444; font-size: 13px; margin-bottom: 8px; min-height: 18px; }
+    #login-submit {
+      width: 100%;
+      background: none;
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      font-family: var(--font);
+      font-size: 14px;
+      padding: 12px;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+    #login-submit:active { background: var(--accent); color: var(--bg); }
   </style>
 </head>
 <body>
 
 <header>
   <h1>Food Intaker</h1>
-  <button id="settings-btn" onclick="openSettings()">[settings]</button>
+  <div style="display:flex;gap:8px;">
+    <button id="settings-btn" onclick="openSettings()">[settings]</button>
+    <button id="logout-btn" onclick="doLogout()">[logout]</button>
+  </div>
 </header>
 
 <div id="food-list">
@@ -317,6 +354,14 @@
   <button id="settings-close" onclick="closeSettings()">[ cancel ]</button>
 </div>
 
+<div id="login-panel">
+  <h2>// food intaker</h2>
+  <div class="form-row"><label>email</label><input id="l-email" type="email" inputmode="email" autocomplete="email" placeholder="you@example.com"></div>
+  <div class="form-row"><label>password</label><input id="l-pass" type="password" autocomplete="current-password"></div>
+  <div id="login-error"></div>
+  <button id="login-submit" onclick="doLogin()">[ login ]</button>
+</div>
+
 <script>
   const BAR_LEN = 20;
   const MACROS = [
@@ -328,11 +373,43 @@
   let targets = { protein: null, calories: null, carbs: null, fat: null };
   let totals   = { protein: 0, calories: 0, carbs: 0, fat: 0 };
 
+  function authHeaders() {
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${localStorage.getItem('token')}`,
+    };
+  }
+
+  async function doLogin() {
+    const email = document.getElementById('l-email').value.trim();
+    const pass  = document.getElementById('l-pass').value;
+    document.getElementById('login-error').textContent = '';
+    const res = await fetch('/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: pass }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      document.getElementById('login-error').textContent = err.detail || 'Login failed';
+      return;
+    }
+    const { token } = await res.json();
+    localStorage.setItem('token', token);
+    document.getElementById('login-panel').classList.remove('open');
+    init();
+  }
+
+  function doLogout() {
+    localStorage.removeItem('token');
+    location.reload();
+  }
+
   async function init() {
     const [foods, report, settings] = await Promise.all([
-      fetch('/foods').then(r => r.json()),
-      fetch('/report?start=' + todayStart()).then(r => r.json()),
-      fetch('/settings').then(r => r.json()),
+      fetch('/foods', { headers: authHeaders() }).then(r => r.json()),
+      fetch('/report?start=' + todayStart(), { headers: authHeaders() }).then(r => r.json()),
+      fetch('/settings', { headers: authHeaders() }).then(r => r.json()),
     ]);
     renderFoods(foods);
     MACROS.forEach(m => {
@@ -366,7 +443,7 @@
   async function logFood(food, btn) {
     await fetch('/log', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders(),
       body: JSON.stringify({ food_id: food.id, serving: 1 }),
     });
     MACROS.forEach(m => { totals[m.key] += (food[m.foodKey] || 0); });
@@ -414,7 +491,7 @@
     };
     await fetch('/log/quick', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders(),
       body: JSON.stringify(body),
     });
     MACROS.forEach(m => { totals[m.key] += (body[m.key] || 0); });
@@ -444,7 +521,7 @@
     };
     const res = await fetch('/foods', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders(),
       body: JSON.stringify(body),
     });
     const food = await res.json();
@@ -474,7 +551,7 @@
     MACROS.forEach(m => { body[m.settingKey] = parseFloat(document.getElementById(m.inputId).value) || null; });
     await fetch('/settings', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders(),
       body: JSON.stringify(body),
     });
     MACROS.forEach(m => { targets[m.key] = body[m.settingKey]; });
@@ -482,7 +559,11 @@
     closeSettings();
   }
 
-  init();
+  if (localStorage.getItem('token')) {
+    init();
+  } else {
+    document.getElementById('login-panel').classList.add('open');
+  }
 </script>
 </body>
 </html>

@@ -8,6 +8,8 @@ class User(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
+    email = Column(String, unique=True, nullable=True)
+    hashed_password = Column(String, nullable=True)
     protein_target = Column(Float, nullable=True)
     calories_target = Column(Float, nullable=True)
     carbs_target = Column(Float, nullable=True)
